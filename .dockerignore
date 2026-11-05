@@ -1,0 +1,9 @@
+.venv
+airflow_home
+data/*.db
+data/*.sqlite
+ResearchLibrary/papers/*.pdf
+ResearchLibrary/output/*.html
+__pycache__
+.git
+.env

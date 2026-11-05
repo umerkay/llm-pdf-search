@@ -1,0 +1,26 @@
+# Python and environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+.env.*
+!.env.example
+
+# Airflow configurations and massive log files
+airflow_home/
+airflow.cfg
+airflow.db
+webserver_config.py
+logs/
+
+# Local databases
+data/*.db
+data/*.sqlite
+
+# Google Drive synced data (handled by Drive, keep out of Git)
+ResearchLibrary/papers/*.pdf
+ResearchLibrary/output/*.html
+
+# OS generated files
+.DS_Store
