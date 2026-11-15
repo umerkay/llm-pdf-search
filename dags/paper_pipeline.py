@@ -145,6 +145,23 @@ Do not include Markdown fences or any other keys.
 Research paper Markdown:
 {markdown}
 """
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "paper_metadata",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "keywords": {"type": "array", "items": {"type": "string"}},
+                        "category": {"type": "string", "enum": CATEGORIES},
+                    },
+                    "required": ["title", "summary", "keywords", "category"],
+                    "additionalProperties": False,
+                },
+            },
+        }
 
         transformed: list[dict[str, Any]] = []
         for paper in extracted_papers:
@@ -158,6 +175,7 @@ Research paper Markdown:
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0,
+                    response_format=response_format,
                 )
                 content = response.choices[0].message.content or ""
                 try:
