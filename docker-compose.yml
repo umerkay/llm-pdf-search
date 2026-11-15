@@ -23,4 +23,5 @@ services:
       - ./ResearchLibrary:/opt/airflow/ResearchLibrary
       - ./data:/opt/airflow/data
       - ./airflow_home:/opt/airflow/airflow_home
+      - "${RESEARCH_LIBRARY_HOST_PATH:-./ResearchLibrary}:/opt/airflow/ResearchLibrary"
     restart: unless-stopped
