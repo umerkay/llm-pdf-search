@@ -33,6 +33,16 @@ DATABASE_PATH = project_path("DATABASE_PATH", PROJECT_ROOT / "data" / "papers.db
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
 LOGGER = logging.getLogger(__name__)
 
+# Fixed category list. Anything that is not clearly computer science goes under "Other".
+CATEGORIES = [
+    "AI",
+    "Data Engineering",
+    "Software Engineering",
+    "Cybersecurity",
+    "Systems & Networking",
+    "Other",
+]
+
 
 @dag(
     dag_id="paper_pipeline",
@@ -124,9 +134,12 @@ def paper_pipeline():
             ),
         )
         model = os.getenv("OPENAI_MODEL", "local-model")
-        prompt_template = """Analyze the research paper below.
+        category_list = ", ".join(f'"{name}"' for name in CATEGORIES)
+        prompt_template = """Analyze the research paper below. This library focuses on computer science papers.
 Return only a valid JSON object with exactly these keys:
 title (string), summary (string), keywords (list of strings), category (string).
+The category must be exactly one of: {categories}
+Use "Other" if the paper is not about computer science or does not fit the other categories.
 Do not include Markdown fences or any other keys.
 
 Research paper Markdown:
@@ -135,7 +148,9 @@ Research paper Markdown:
 
         transformed: list[dict[str, Any]] = []
         for paper in extracted_papers:
-            prompt = prompt_template.format(markdown=paper["markdown"])
+            prompt = prompt_template.format(
+                categories=category_list, markdown=paper["markdown"]
+            )
             parsed: dict[str, Any] | None = None
             last_error: json.JSONDecodeError | None = None
             for _attempt in range(2):
@@ -154,7 +169,7 @@ Research paper Markdown:
                         or not isinstance(candidate["summary"], str)
                         or not isinstance(candidate["keywords"], list)
                         or not all(isinstance(keyword, str) for keyword in candidate["keywords"])
-                        or not isinstance(candidate["category"], str)
+                        or candidate["category"] not in CATEGORIES
                     ):
                         raise ValueError("LLM response did not match the required JSON schema")
                     parsed = candidate
@@ -242,7 +257,7 @@ Research paper Markdown:
 
     @task
     def generate_html() -> str:
-        """Render every stored paper as a searchable static HTML page."""
+        """Render every stored paper as a static HTML page with search and category filter."""
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(DATABASE_PATH) as connection:
             rows = connection.execute(
@@ -255,25 +270,51 @@ Research paper Markdown:
             keywords = ", ".join(json.loads(keywords_json))
             search_text = escape(f"{title} {category}", quote=True)
             cards.append(
-                f"""<article class="paper" data-search="{search_text}">
+                f"""<article class="paper" data-search="{search_text}" data-category="{escape(category, quote=True)}">
 <h2>{escape(title)}</h2><p class="category">{escape(category)}</p>
 <p>{escape(summary)}</p><p><strong>Keywords:</strong> {escape(keywords)}</p>
 <small>{escape(filename)}</small></article>"""
             )
-        html = """<!doctype html>
+        options = "\n".join(
+            f'<option value="{escape(name, quote=True)}">{escape(name)}</option>'
+            for name in CATEGORIES
+        )
+        html = (
+            """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport"
 content="width=device-width, initial-scale=1"><title>Research Study Library</title>
 <style>body{font-family:system-ui;max-width:900px;margin:2rem auto;padding:0 1rem}
-input{width:100%;padding:.7rem;margin:1rem 0;font-size:1rem}.paper{border:1px solid #ddd;
-border-radius:8px;padding:1rem;margin:1rem 0}.category{color:#555;font-weight:600}</style>
+.controls{display:flex;gap:.75rem;margin:1rem 0}
+input,select{padding:.7rem;font-size:1rem}input{flex:1}
+.paper{border:1px solid #ddd;border-radius:8px;padding:1rem;margin:1rem 0}
+.category{color:#555;font-weight:600}</style>
 </head><body><h1>Research Study Library</h1>
+<div class="controls">
 <input id="search" type="search" placeholder="Search by title or category">
-<main id="papers">""" + "\n".join(cards) + """</main>
-<script>document.getElementById("search").addEventListener("input", (event) => {
-const query = event.target.value.toLowerCase();
-document.querySelectorAll(".paper").forEach((paper) => {
-paper.hidden = !paper.dataset.search.toLowerCase().includes(query);
-});});</script></body></html>"""
+<select id="category-filter"><option value="">All categories</option>
+"""
+            + options
+            + """
+</select></div>
+<main id="papers">"""
+            + "\n".join(cards)
+            + """</main>
+<script>
+const searchBox = document.getElementById("search");
+const categoryFilter = document.getElementById("category-filter");
+function applyFilters() {
+  const query = searchBox.value.toLowerCase();
+  const category = categoryFilter.value;
+  document.querySelectorAll(".paper").forEach((paper) => {
+    const matchesText = paper.dataset.search.toLowerCase().includes(query);
+    const matchesCategory = !category || paper.dataset.category === category;
+    paper.hidden = !(matchesText && matchesCategory);
+  });
+}
+searchBox.addEventListener("input", applyFilters);
+categoryFilter.addEventListener("change", applyFilters);
+</script></body></html>"""
+        )
         output_path = OUTPUT_DIR / "index.html"
         output_path.write_text(html, encoding="utf-8")
         return str(output_path)
