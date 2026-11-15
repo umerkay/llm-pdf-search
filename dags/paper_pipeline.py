@@ -49,6 +49,7 @@ CATEGORIES = [
     schedule="*/15 * * * *",
     start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
     catchup=False,
+    max_active_runs=1,
     default_args={"retries": 1, "retry_delay": pendulum.duration(minutes=5)},
     tags=["research", "study-library"],
 )
